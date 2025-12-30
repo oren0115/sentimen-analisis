@@ -29,7 +29,8 @@ from collections import Counter
 
 # Get project root directory (parent of scripts folder)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(PROJECT_ROOT, 'src'))
+# Add project root to path so we can import src module
+sys.path.insert(0, PROJECT_ROOT)
 
 from src.config import DATA_PATH, DATA_TEST_SIZE, SENTIMENT_MAP, SENTIMENT_LABELS
 from src.data_processing import load_data, split_data, preprocess_data, encode_sentiments
