@@ -19,7 +19,12 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import matplotlib.pyplot as plt
 import seaborn as sns
-from wordcloud import WordCloud
+try:
+    from wordcloud import WordCloud
+    WORDCLOUD_AVAILABLE = True
+except ImportError:
+    WORDCLOUD_AVAILABLE = False
+    WordCloud = None
 from collections import Counter
 
 # Get project root directory (parent of scripts folder)
@@ -362,20 +367,23 @@ elif page == "💬 Analisis Sentimen":
             texts_for_wc = df_processed['text_clean'].str.cat(sep=' ')
         
         if texts_for_wc and len(texts_for_wc) > 0:
-            try:
-                wordcloud = WordCloud(
-                    width=800,
-                    height=400,
-                    background_color='white',
-                    max_words=100
-                ).generate(texts_for_wc)
-                
-                fig, ax = plt.subplots(figsize=(10, 5))
-                ax.imshow(wordcloud, interpolation='bilinear')
-                ax.axis('off')
-                st.pyplot(fig)
-            except Exception as e:
-                st.warning(f"Tidak dapat membuat word cloud: {str(e)}")
+            if WORDCLOUD_AVAILABLE:
+                try:
+                    wordcloud = WordCloud(
+                        width=800,
+                        height=400,
+                        background_color='white',
+                        max_words=100
+                    ).generate(texts_for_wc)
+                    
+                    fig, ax = plt.subplots(figsize=(10, 5))
+                    ax.imshow(wordcloud, interpolation='bilinear')
+                    ax.axis('off')
+                    st.pyplot(fig)
+                except Exception as e:
+                    st.warning(f"Tidak dapat membuat word cloud: {str(e)}")
+            else:
+                st.info("⚠️ WordCloud tidak tersedia. Install dengan: `pip install wordcloud`")
 
 # ============================================================================
 # PAGE 4: VISUALISASI DETAIL
