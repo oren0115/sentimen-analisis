@@ -97,11 +97,25 @@ def main():
      y_train_le, y_valid_le, y_test_le) = prepare_data_for_training(df_train, df_test)
 
     # Train Naive Bayes
-    nb_model, vectorizer, tf_transformer = train_naive_bayes(
+    nb_model, vectorizer, tf_transformer, metrics = train_naive_bayes(
         X_train, y_train_le, X_test, y_test_le
     )
 
-    print("\nProcessing complete!")
+    # Display summary
+    print("\n" + "="*60)
+    print("SUMMARY")
+    print("="*60)
+    print(f"\n✅ Model Accuracy: {metrics['accuracy']*100:.2f}%")
+    print(f"\n📊 Best Performing Class:")
+    best_class = max(metrics['f1_score']['per_class'].items(), key=lambda x: x[1])
+    print(f"   {best_class[0]}: F1-Score = {best_class[1]*100:.2f}%")
+    print(f"\n📊 Worst Performing Class:")
+    worst_class = min(metrics['f1_score']['per_class'].items(), key=lambda x: x[1])
+    print(f"   {worst_class[0]}: F1-Score = {worst_class[1]*100:.2f}%")
+    
+    print("\n" + "="*60)
+    print("Processing complete!")
+    print("="*60)
 
 
 if __name__ == "__main__":

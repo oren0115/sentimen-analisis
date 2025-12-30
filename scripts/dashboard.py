@@ -33,8 +33,12 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 from src.config import DATA_PATH, DATA_TEST_SIZE, SENTIMENT_MAP, SENTIMENT_LABELS
-from src.data_processing import load_data, split_data, preprocess_data, encode_sentiments
+from src.data_processing import (
+    load_data, split_data, preprocess_data, encode_sentiments,
+    process_token_lengths, prepare_data_for_training
+)
 from src.text_cleaning import clean_texts
+from src.models import train_naive_bayes
 
 # Page configuration
 st.set_page_config(
@@ -94,7 +98,7 @@ if df is None:
 st.sidebar.title("📊 Navigasi Dashboard")
 page = st.sidebar.radio(
     "Pilih Halaman",
-    ["🏠 Overview", "📈 Analisis Data", "💬 Analisis Sentimen", "📊 Visualisasi Detail"]
+    ["🏠 Overview", "📈 Analisis Data", "💬 Analisis Sentimen", "🏆 Evaluasi Model", "📊 Visualisasi Detail"]
 )
 
 # Main title
@@ -387,7 +391,245 @@ elif page == "💬 Analisis Sentimen":
                 st.info("⚠️ WordCloud tidak tersedia. Install dengan: `pip install wordcloud`")
 
 # ============================================================================
-# PAGE 4: VISUALISASI DETAIL
+# PAGE 4: EVALUASI MODEL
+# ============================================================================
+elif page == "🏆 Evaluasi Model":
+    st.header("🏆 Evaluasi Model Naive Bayes")
+    
+    # Cache model training
+    @st.cache_data
+    def train_and_evaluate_model():
+        """Train model and return metrics."""
+        try:
+            # Prepare data for training
+            df_train_prep = df_processed.copy()
+            df_test_prep = df_test_processed.copy()
+            
+            # Process token lengths
+            from src.config import MAX_TOKEN_LENGTH
+            df_train_prep, df_test_prep = process_token_lengths(
+                df_train_prep, df_test_prep, max_length=MAX_TOKEN_LENGTH
+            )
+            
+            # Prepare data
+            (X_train, X_valid, X_test, y_train, y_valid, y_test,
+             y_train_le, y_valid_le, y_test_le) = prepare_data_for_training(
+                df_train_prep, df_test_prep
+            )
+            
+            # Train model
+            nb_model, vectorizer, tf_transformer, metrics = train_naive_bayes(
+                X_train, y_train_le, X_test, y_test_le
+            )
+            
+            return metrics, nb_model, vectorizer, tf_transformer
+        except Exception as e:
+            st.error(f"Error training model: {str(e)}")
+            return None, None, None, None
+    
+    # Train model
+    with st.spinner("Training model... Ini mungkin memakan waktu beberapa saat."):
+        metrics, model, vectorizer, tf_transformer = train_and_evaluate_model()
+    
+    if metrics is None:
+        st.error("Gagal melatih model. Silakan cek error di atas.")
+        st.stop()
+    
+    # Overall Accuracy
+    st.subheader("🎯 Akurasi Keseluruhan")
+    
+    accuracy = metrics['accuracy']
+    accuracy_color = '#10b981' if accuracy >= 0.8 else '#f59e0b' if accuracy >= 0.6 else '#ef4444'
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown(f"""
+            <div style="text-align: center; padding: 2rem; background: linear-gradient(135deg, {accuracy_color}15 0%, {accuracy_color}05 100%); border-radius: 1rem; border: 2px solid {accuracy_color}; margin: 1rem 0;">
+                <div style="font-size: 0.875rem; color: #64748b; font-weight: 600; margin-bottom: 0.5rem;">AKURASI MODEL</div>
+                <div style="font-size: 4rem; font-weight: 700; color: {accuracy_color}; line-height: 1;">
+                    {accuracy*100:.2f}%
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    st.divider()
+    
+    # Metrics per class
+    st.subheader("📊 Metrik per Kelas")
+    
+    # Create metrics dataframe
+    metrics_data = []
+    for label in SENTIMENT_LABELS:
+        metrics_data.append({
+            'Kelas': label,
+            'Precision': metrics['precision']['per_class'][label] * 100,
+            'Recall': metrics['recall']['per_class'][label] * 100,
+            'F1-Score': metrics['f1_score']['per_class'][label] * 100,
+            'Support': int(metrics['classification_report'][label]['support'])
+        })
+    
+    metrics_df = pd.DataFrame(metrics_data)
+    
+    # Display metrics table
+    st.dataframe(metrics_df, width='stretch', hide_index=True)
+    
+    # Bar charts for metrics
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        fig = px.bar(
+            metrics_df,
+            x='Kelas',
+            y='Precision',
+            title="Precision per Kelas",
+            labels={'Precision': 'Precision (%)', 'Kelas': 'Sentimen'},
+            color='Kelas',
+            color_discrete_map={
+                'Negative': '#FF6B6B',
+                'Neutral': '#FFD93D',
+                'Positive': '#6BCF7F'
+            }
+        )
+        fig.update_layout(showlegend=False, yaxis_range=[0, 100])
+        st.plotly_chart(fig, width='stretch', use_container_width=True)
+    
+    with col2:
+        fig = px.bar(
+            metrics_df,
+            x='Kelas',
+            y='Recall',
+            title="Recall per Kelas",
+            labels={'Recall': 'Recall (%)', 'Kelas': 'Sentimen'},
+            color='Kelas',
+            color_discrete_map={
+                'Negative': '#FF6B6B',
+                'Neutral': '#FFD93D',
+                'Positive': '#6BCF7F'
+            }
+        )
+        fig.update_layout(showlegend=False, yaxis_range=[0, 100])
+        st.plotly_chart(fig, width='stretch', use_container_width=True)
+    
+    with col3:
+        fig = px.bar(
+            metrics_df,
+            x='Kelas',
+            y='F1-Score',
+            title="F1-Score per Kelas",
+            labels={'F1-Score': 'F1-Score (%)', 'Kelas': 'Sentimen'},
+            color='Kelas',
+            color_discrete_map={
+                'Negative': '#FF6B6B',
+                'Neutral': '#FFD93D',
+                'Positive': '#6BCF7F'
+            }
+        )
+        fig.update_layout(showlegend=False, yaxis_range=[0, 100])
+        st.plotly_chart(fig, width='stretch', use_container_width=True)
+    
+    st.divider()
+    
+    # Confusion Matrix
+    st.subheader("📋 Confusion Matrix")
+    
+    cm = np.array(metrics['confusion_matrix'])
+    
+    # Create confusion matrix heatmap
+    fig = px.imshow(
+        cm,
+        labels=dict(x="Predicted", y="Actual", color="Count"),
+        x=SENTIMENT_LABELS,
+        y=SENTIMENT_LABELS,
+        text_auto=True,
+        aspect="auto",
+        color_continuous_scale='Blues',
+        title="Confusion Matrix"
+    )
+    fig.update_layout(width=600, height=500)
+    st.plotly_chart(fig, width='stretch')
+    
+    st.divider()
+    
+    # Detailed Classification Report
+    st.subheader("📄 Classification Report Detail")
+    
+    # Create detailed report table
+    report_data = []
+    for label in SENTIMENT_LABELS:
+        report = metrics['classification_report'][label]
+        report_data.append({
+            'Kelas': label,
+            'Precision': f"{report['precision']*100:.2f}%",
+            'Recall': f"{report['recall']*100:.2f}%",
+            'F1-Score': f"{report['f1-score']*100:.2f}%",
+            'Support': int(report['support'])
+        })
+    
+    # Add averages
+    macro_avg = metrics['classification_report']['macro avg']
+    weighted_avg = metrics['classification_report']['weighted avg']
+    
+    report_data.append({
+        'Kelas': 'Macro Avg',
+        'Precision': f"{macro_avg['precision']*100:.2f}%",
+        'Recall': f"{macro_avg['recall']*100:.2f}%",
+        'F1-Score': f"{macro_avg['f1-score']*100:.2f}%",
+        'Support': int(macro_avg['support'])
+    })
+    
+    report_data.append({
+        'Kelas': 'Weighted Avg',
+        'Precision': f"{weighted_avg['precision']*100:.2f}%",
+        'Recall': f"{weighted_avg['recall']*100:.2f}%",
+        'F1-Score': f"{weighted_avg['f1-score']*100:.2f}%",
+        'Support': int(weighted_avg['support'])
+    })
+    
+    report_df = pd.DataFrame(report_data)
+    st.dataframe(report_df, width='stretch', hide_index=True)
+    
+    st.divider()
+    
+    # Summary insights
+    st.subheader("💡 Insight & Analisis")
+    
+    best_class = max(metrics['f1_score']['per_class'].items(), key=lambda x: x[1])
+    worst_class = min(metrics['f1_score']['per_class'].items(), key=lambda x: x[1])
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown(f"""
+            <div style="padding: 1.5rem; background: linear-gradient(135deg, #10b98115 0%, #10b98105 100%); border-radius: 0.75rem; border-left: 4px solid #10b981;">
+                <h4 style="color: #10b981; font-weight: 600; margin-bottom: 1rem;">
+                    🏆 Best Performing Class
+                </h4>
+                <div style="font-size: 1.5rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">
+                    {best_class[0]}
+                </div>
+                <div style="color: #64748b;">
+                    F1-Score: <strong style="color: #10b981;">{best_class[1]*100:.2f}%</strong>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+            <div style="padding: 1.5rem; background: linear-gradient(135deg, #f59e0b15 0%, #f59e0b05 100%); border-radius: 0.75rem; border-left: 4px solid #f59e0b;">
+                <h4 style="color: #f59e0b; font-weight: 600; margin-bottom: 1rem;">
+                    ⚠️ Worst Performing Class
+                </h4>
+                <div style="font-size: 1.5rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">
+                    {worst_class[0]}
+                </div>
+                <div style="color: #64748b;">
+                    F1-Score: <strong style="color: #f59e0b;">{worst_class[1]*100:.2f}%</strong>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+# ============================================================================
+# PAGE 5: VISUALISASI DETAIL
 # ============================================================================
 elif page == "📊 Visualisasi Detail":
     st.header("📊 Visualisasi Detail")

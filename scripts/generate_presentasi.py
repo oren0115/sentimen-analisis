@@ -72,19 +72,16 @@ def collect_results():
     
     # Train model
     print("\n5. Training model...")
-    nb_model, vectorizer, tf_transformer = train_naive_bayes(
+    nb_model, vectorizer, tf_transformer, metrics = train_naive_bayes(
         X_train, y_train_le, X_test, y_test_le
     )
     
-    # Get predictions
-    X_test_cv = vectorizer.transform(X_test)
-    X_test_tf = tf_transformer.transform(X_test_cv)
-    y_pred = nb_model.predict(X_test_tf)
-    
-    # Calculate metrics
-    accuracy = accuracy_score(y_test_le, y_pred)
-    report = classification_report(y_test_le, y_pred, target_names=SENTIMENT_LABELS, output_dict=True)
-    cm = confusion_matrix(y_test_le, y_pred)
+    # Use metrics from training function
+    accuracy = metrics['accuracy']
+    report = metrics['classification_report']
+    cm = confusion_matrix(y_test_le, nb_model.predict(
+        tf_transformer.transform(vectorizer.transform(X_test))
+    ))
     
     # Calculate text length statistics
     text_len_stats = {
